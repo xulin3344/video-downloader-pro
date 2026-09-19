@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M3U8 多线程切片合并下载器 Pro</title>
+  <link rel="stylesheet" href="m3u8_downloader.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="8 17 12 21 16 17"></polyline>
+            <line x1="12" y1="12" x2="12" y2="21"></line>
+            <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"></path>
+          </svg>
+        </div>
+        <div>
+          <h1>M3U8 多线程切片合并下载器 <span class="tag">Pro</span></h1>
+          <p class="subtitle">基于浏览器前端并发引擎，自动分片拉取并合并封装为单一视频文件</p>
+        </div>
+      </div>
+    </header>
+
+    <main class="card">
+      <div class="form-group">
+        <label>视频标题</label>
+        <input type="text" id="video-title" class="input-text" placeholder="视频标题">
+      </div>
+
+      <div class="form-group">
+        <label>M3U8 播放列表地址</label>
+        <input type="text" id="m3u8-url" class="input-text" placeholder="https://.../index.m3u8">
+      </div>
+
+      <div class="settings-row">
+        <div class="setting-item">
+          <label>并发线程数：</label>
+          <select id="concurrency-select" class="select-box">
+            <option value="4">4 线程 (稳定)</option>
+            <option value="6">6 线程 (标准)</option>
+            <option value="10" selected>10 线程 (极速推荐)</option>
+            <option value="16">16 线程 (狂暴)</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <label>输出格式：</label>
+          <select id="format-select" class="select-box">
+            <option value="mp4" selected>.mp4 (优先封装 MP4 / H.265自动无损TS)</option>
+            <option value="ts">.ts (原画无损 TS 流 - 声画100%保真，播放器秒开)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button id="btn-start" class="btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          开始并发解析与下载
+        </button>
+        <button id="btn-stop" class="btn-danger" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <rect x="6" y="6" width="12" height="12"></rect>
+          </svg>
+          停止
+        </button>
+      </div>
+
+      <!-- 进度指示面板 -->
+      <div class="progress-section" id="progress-section" style="display: none;">
+        <div class="progress-header">
+          <span id="status-text" class="status-text">准备就绪...</span>
+          <span id="percent-text" class="percent-text">0%</span>
+        </div>
+
+        <div class="progress-bar-track">
+          <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">切片总数 / 完成</span>
+            <span id="stat-chunks" class="stat-value">0 / 0</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">实时下载速度</span>
+            <span id="stat-speed" class="stat-value">0.0 MB/s</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">已下载数据大小</span>
+            <span id="stat-size" class="stat-value">0.0 MB</span>
+          </div>
+        </div>
+
+        <!-- 详细日志输出 -->
+        <div class="log-box" id="log-box"></div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>万能视频嗅探器 Pro · 前端流媒体切片合并引擎 · 数据仅在本地浏览器内存中处理，绝对隐私安全</span>
+    </footer>
+  </div>
+
+  <script src="mux.min.js"></script>
+  <script src="m3u8_downloader.js"></script>
+</body>
+</html>

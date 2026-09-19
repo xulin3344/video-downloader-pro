@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>万能网页视频嗅探与下载器 Pro</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 头部导航栏 -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>万能视频嗅探器 <span class="version-tag">Pro</span></h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-refresh" class="icon-btn" title="重新嗅探当前页面">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
+        <button id="btn-clear" class="icon-btn danger" title="清空嗅探列表">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- 网页信息栏与批量控制 -->
+    <div class="page-meta-bar">
+      <div class="page-info">
+        <span class="pulse-dot"></span>
+        <span id="tab-title" class="tab-title-text" title="当前网页标题">正在连接标签页...</span>
+      </div>
+      <div class="batch-bar">
+        <span id="media-count-badge" class="count-badge">0 个资源</span>
+        <button id="btn-copy-all" class="text-btn" title="复制当前捕获的所有视频链接">全部复制</button>
+      </div>
+    </div>
+
+    <!-- 智能主视频过滤与模式切换栏 -->
+    <div class="filter-toolbar">
+      <div class="filter-segments">
+        <button id="filter-main" class="filter-btn active" title="智能识别并仅显示时长最长、最重要的主视频（自动过滤广告）">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          仅看主视频
+        </button>
+        <button id="filter-all" class="filter-btn" title="查看网页上嗅探到的所有媒体资源（含广告）">
+          全部资源
+        </button>
+      </div>
+      <div class="filter-hint" id="filter-hint">⭐ 优先推荐最长正片</div>
+    </div>
+
+    <!-- 视频流卡片滚动列表容器 -->
+    <main class="content-area" id="media-list">
+      <!-- 动态插入视频卡片 -->
+    </main>
+
+    <!-- 空状态提示 -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+          <line x1="7" y1="2" x2="7" y2="22"></line>
+          <line x1="17" y1="2" x2="17" y2="22"></line>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <line x1="2" y1="7" x2="7" y2="7"></line>
+          <line x1="2" y1="17" x2="7" y2="17"></line>
+          <line x1="17" y1="17" x2="22" y2="17"></line>
+          <line x1="17" y1="7" x2="22" y2="7"></line>
+        </svg>
+      </div>
+      <p class="empty-title">当前页面暂未捕获到视频流</p>
+      <p class="empty-desc">请在网页中点击播放视频，流媒体加载后插件将自动捕获！</p>
+      <button id="btn-rescan" class="primary-btn">立即强制重探</button>
+    </div>
+
+    <!-- 底部状态与联动栏 -->
+    <footer class="footer">
+      <div class="footer-tip">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span>已无缝对接本地桌面端下载器 (剪贴板秒入队)</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 吐司消息提示 -->
+  <div id="toast" class="toast">已复制到剪贴板</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller build outputs and intermediates
+build/
+build_fixed/
+build_parallel/
+dist/
+dist_fixed/
+dist_parallel/
+localpycs/
+*.toc
+*.pkg
+*.pyz
+pyz0.pyz
+base_library.zip
+warn-*.txt
+xref-*.html
+
+# Temporary testing frames & logs
+test_frame.jpg
+*.log
+*.bak
+*_bak.*
+config.json
+
+# IDE & OS files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+Thumbs.db
+Desktop.ini
