@@ -974,42 +974,28 @@ class VideoDownloaderApp:
             relief=tk.FLAT
         )
         self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8, ipady=4)
-        self.url_entry.bind("<Return>", lambda e: self.extract_single_url(auto_download=True))
+        self.url_entry.bind("<Return>", lambda e: self.extract_single_url())
 
         ttk.Button(
             input_card,
-            text="⚡ 提取并下载",
+            text="智能提取",
             style="Accent.TButton",
-            command=lambda: self.extract_single_url(auto_download=True)
+            command=self.extract_single_url
         ).pack(side=tk.LEFT, padx=3)
 
         ttk.Button(
             input_card,
-            text="仅提取",
+            text="粘贴并提取",
             style="Secondary.TButton",
-            command=lambda: self.extract_single_url(auto_download=False)
-        ).pack(side=tk.LEFT, padx=2)
-
-        ttk.Button(
-            input_card,
-            text="📋 粘贴并下载",
-            style="Secondary.TButton",
-            command=lambda: self.paste_and_extract(auto_download=True)
-        ).pack(side=tk.LEFT, padx=2)
-
-        ttk.Button(
-            input_card,
-            text="➕ 批量下载",
-            style="Secondary.TButton",
-            command=self.open_batch_dialog
-        ).pack(side=tk.LEFT, padx=2)
+            command=self.paste_and_extract
+        ).pack(side=tk.LEFT, padx=3)
 
         ttk.Button(
             input_card,
             text="🔄 TS转MP4",
             style="Secondary.TButton",
             command=self.open_ts_converter_dialog
-        ).pack(side=tk.LEFT, padx=2)
+        ).pack(side=tk.LEFT, padx=3)
 
         # ----------------------------------------------------
         # 下载配置工具栏 (Settings & Global Actions Toolbar)
@@ -1271,19 +1257,8 @@ class VideoDownloaderApp:
         count_lbl = tk.Label(left_ctrl, text="🔍 已识别到: 0 个有效视频链接", bg=t["bg_card"], fg=t["text_sub"], font=("Microsoft YaHei UI", 9, "bold"))
         count_lbl.pack(anchor="w")
 
-        auto_download_var = tk.BooleanVar(value=auto_download)
-        chk_auto = tk.Checkbutton(
-            left_ctrl,
-            text="✓ 导入解析后自动立即开始下载 (推荐)",
-            variable=auto_download_var,
-            bg=t["bg_card"],
-            fg=t["accent"],
-            selectcolor=t["bg_input"],
-            activebackground=t["bg_card"],
-            activeforeground=t["accent"],
-            font=("Microsoft YaHei UI", 9)
-        )
-        chk_auto.pack(anchor="w", pady=(4, 0))
+        hint_sub = tk.Label(left_ctrl, text="💡 点击右侧确认后，将自动解析提取并启动极速下载", bg=t["bg_card"], fg=t["text_sub"], font=("Microsoft YaHei UI", 8))
+        hint_sub.pack(anchor="w", pady=(3, 0))
 
         def update_count(*args):
             text = txt_input.get("1.0", tk.END)
@@ -1313,17 +1288,16 @@ class VideoDownloaderApp:
             txt_input.insert("1.0", initial_text)
             update_count()
 
-        def do_execute(start_download_now):
+        def do_execute():
             text = txt_input.get("1.0", tk.END)
             urls = list(dict.fromkeys(re.findall(r"https?://[^\s<>\"'()]+", text)))
             if not urls:
                 messagebox.showwarning("提示", "未在输入框中识别到任何有效的 http/https 链接！", parent=dlg)
                 return
             dlg.destroy()
-            action_desc = "并自动开始下载" if start_download_now else "待手动确认下载"
-            self.set_status(f"🚀 已接收 {len(urls)} 个批量链接，正在并发解析{action_desc}...")
+            self.set_status(f"🚀 已接收 {len(urls)} 个批量链接，正在自动提取并加入下载队列...")
             for u in urls:
-                self.extract_info_async(u, auto_start=start_download_now)
+                self.extract_info_async(u, auto_start=True)
 
         # 右侧操作按钮组
         btn_box = tk.Frame(footer_box, bg=t["bg_card"])
@@ -1331,32 +1305,18 @@ class VideoDownloaderApp:
 
         btn_download = tk.Button(
             btn_box,
-            text="🚀 确认并一键全部下载",
-            command=lambda: do_execute(start_download_now=True),
+            text="🚀 确认并批量下载",
+            command=do_execute,
             bg=t["accent"],
             fg="#ffffff" if t["name"] == "light" else "#11111b",
             activebackground=t["accent_hover"],
             bd=0,
             cursor="hand2",
-            padx=12,
-            pady=6,
-            font=("Microsoft YaHei UI", 9, "bold")
+            padx=16,
+            pady=7,
+            font=("Microsoft YaHei UI", 10, "bold")
         )
-        btn_download.pack(side=tk.RIGHT, padx=(6, 0))
-
-        btn_import_only = tk.Button(
-            btn_box,
-            text="📋 仅导入待下载列表",
-            command=lambda: do_execute(start_download_now=False),
-            bg=t["bg_input"],
-            fg=t["text_main"],
-            bd=1,
-            cursor="hand2",
-            padx=10,
-            pady=5,
-            font=("Microsoft YaHei UI", 9)
-        )
-        btn_import_only.pack(side=tk.RIGHT, padx=6)
+        btn_download.pack(side=tk.RIGHT, padx=(8, 0))
 
         ttk.Button(btn_box, text="取消", style="Secondary.TButton", command=dlg.destroy).pack(side=tk.RIGHT)
 
