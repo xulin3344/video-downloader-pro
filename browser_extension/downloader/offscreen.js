@@ -118,8 +118,14 @@ async function transmuxTsToMp4(tsBuffers, progressCb) {
       // 分批推送切片并主动让出事件循环，防止长时间锁死主线程导致页面卡死
       const BATCH_SIZE = 25;
       for (let i = 0; i < tsBuffers.length; i++) {
-        if (tsBuffers[i] && tsBuffers[i].byteLength > 0) {
-          transmuxer.push(tsBuffers[i]);
+        let chunk = tsBuffers[i];
+        if (!chunk) continue;
+        if (chunk instanceof Blob) {
+          const ab = await chunk.arrayBuffer();
+          chunk = new Uint8Array(ab);
+        }
+        if (chunk && chunk.byteLength > 0) {
+          transmuxer.push(chunk);
         }
         if (i % BATCH_SIZE === 0 || i === tsBuffers.length - 1) {
           if (progressCb) {
@@ -197,6 +203,17 @@ async function parseM3U8(url, signal) {
     if (!line) continue;
     if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
       mediaSequence = parseInt(line.split(":")[1].trim(), 10) || 0;
+    } else if (line.startsWith("#EXT-X-MAP:")) {
+      const attrs = parseKeyAttributes(line.slice(11));
+      if (attrs.URI) {
+        const initUrl = resolveUrl(url, attrs.URI);
+        segments.push({
+          url: initUrl,
+          index: segments.length,
+          keyInfo: null,
+          isInitSegment: true
+        });
+      }
     } else if (line.startsWith("#EXT-X-KEY:")) {
       const attrs = parseKeyAttributes(line.slice(11));
       if (attrs.METHOD === "AES-128" && attrs.URI) {
@@ -368,27 +385,40 @@ async function startTask(taskConfig) {
     let outputBlob = null;
     let outputExt = "mp4";
 
-    try {
-      // 按照用户指示：直接合并 TS 切片，不使用 mux.js 转封装，以保证音视频同步完好。
-      // 类似并行版桌面端的直接合并方式。
-      outputExt = "ts";
-      let allChunksForMux;
-      if (hasSeparateAudio && audioBuffers) {
-        allChunksForMux = [];
-        const maxLen = Math.max(chunkBuffers.length, audioBuffers.length);
-        for (let i = 0; i < maxLen; i++) {
-          if (i < chunkBuffers.length && chunkBuffers[i]) allChunksForMux.push(chunkBuffers[i]);
-          if (i < audioBuffers.length && audioBuffers[i]) allChunksForMux.push(audioBuffers[i]);
+    // 1. 检查是否为标准 fMP4 媒体流（包含 #EXT-X-MAP 初始化分片或 .m4s）
+    const isFmp4 = segments.some(s => s.isInitSegment || (s.url && s.url.includes(".m4s")));
+
+    if (isFmp4) {
+      // fMP4 流直接组装为标准 .mp4 容器
+      outputExt = "mp4";
+      outputBlob = new Blob(chunkBuffers, { type: "video/mp4" });
+      broadcastProgress("transmuxing", 100, `fMP4 媒体流已组装为标准 MP4`, total, total, formatBytes(outputBlob.size));
+    } else {
+      // 2. 标准 MPEG-TS 切片：使用 mux.js 混流转封装为标准 MP4 (H.264+AAC)
+      try {
+        let allChunksForMux;
+        if (hasSeparateAudio && audioBuffers) {
+          allChunksForMux = [];
+          const maxLen = Math.max(chunkBuffers.length, audioBuffers.length);
+          for (let i = 0; i < maxLen; i++) {
+            if (i < chunkBuffers.length && chunkBuffers[i]) allChunksForMux.push(chunkBuffers[i]);
+            if (i < audioBuffers.length && audioBuffers[i]) allChunksForMux.push(audioBuffers[i]);
+          }
+        } else {
+          allChunksForMux = chunkBuffers;
         }
-      } else {
-        allChunksForMux = chunkBuffers;
+
+        outputBlob = await transmuxTsToMp4(allChunksForMux, (pct) => {
+          broadcastProgress("transmuxing", 90 + Math.floor(pct * 0.1), `转封装为 MP4 (${pct}%)...`, total, total, formatBytes(totalBytes));
+        });
+        outputExt = "mp4";
+        broadcastProgress("transmuxing", 100, `MP4 转封装完成`, total, total, formatBytes(outputBlob.size));
+      } catch (transmuxErr) {
+        // 如果是 H.265/HEVC 编码的 TS 切片，mux.js 不支持纯前端重封装，安全降级为原生无损 .ts 避免文件损坏
+        outputExt = "ts";
+        outputBlob = new Blob(chunkBuffers, { type: "video/mp2t" });
+        broadcastProgress("transmuxing", 100, `已自动安全保存为无损 TS 流`, total, total, formatBytes(outputBlob.size));
       }
-      
-      outputBlob = new Blob(allChunksForMux, { type: "video/mp2t" });
-      broadcastProgress("transmuxing", 100, `合并完成...`, total, total, formatBytes(outputBlob.size));
-    } catch (transmuxErr) {
-      outputExt = "ts";
-      outputBlob = new Blob(chunkBuffers, { type: "video/mp2t" });
     }
 
     const safeFilename = title.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) + `.${outputExt}`;

@@ -182,8 +182,14 @@ document.addEventListener("DOMContentLoaded", () => {
         // 分批推入 TS 切片并让出事件循环，防止浏览器主线程长期无响应挂起
         const BATCH_SIZE = 25;
         for (let i = 0; i < tsBuffers.length; i++) {
-          if (tsBuffers[i] && tsBuffers[i].byteLength > 0) {
-            transmuxer.push(tsBuffers[i]);
+          let chunk = tsBuffers[i];
+          if (!chunk) continue;
+          if (chunk instanceof Blob) {
+            const ab = await chunk.arrayBuffer();
+            chunk = new Uint8Array(ab);
+          }
+          if (chunk && chunk.byteLength > 0) {
+            transmuxer.push(chunk);
           }
           if (i % BATCH_SIZE === 0 || i === tsBuffers.length - 1) {
             if (progressCb) {
@@ -502,10 +508,9 @@ document.addEventListener("DOMContentLoaded", () => {
         percentText.textContent = "100%";
         progressBarFill.style.width = "100%";
       } else if (format === "mp4") {
-        statusText.textContent = "正在合并原生 TS 数据流...";
-        log("按照用户指示，跳过 mux.js 混流，直接合并 TS 切片，保证音视频完好无损。");
+        statusText.textContent = "正在转封装为标准 MP4 视频...";
+        log("正在使用 mux.js 进行音视频混流，生成标准 H.264/AAC MP4 容器...");
         try {
-          // 合并推入的切片流 (交替推入以保证音视频 PTS 时间戳步调一致，确保音画同步)
           let allChunksForMux;
           if (hasSeparateAudio && audioBuffers) {
             allChunksForMux = [];
@@ -517,20 +522,19 @@ document.addEventListener("DOMContentLoaded", () => {
           } else {
             allChunksForMux = chunkBuffers;
           }
-          outputExt = "ts";
-          outputBlob = new Blob(allChunksForMux, { type: "video/mp2t" });
-          
+
+          outputBlob = await transmuxTsToMp4(allChunksForMux, log, (pct) => {
+            percentText.textContent = `${90 + Math.floor(pct * 0.1)}%`;
+            progressBarFill.style.width = `${90 + Math.floor(pct * 0.1)}%`;
+            statusText.textContent = `正在转封装 MP4 (${pct}%)...`;
+          });
+          outputExt = "mp4";
           percentText.textContent = `100%`;
           progressBarFill.style.width = `100%`;
-          
-          if (outputBlob && outputBlob.size > 0) {
-            log(`✅ 合并成功！生成标准 TS 文件，大小: ${formatBytes(outputBlob.size)}`);
-          } else {
-            throw new Error("合并未产生数据");
-          }
+          log(`✅ MP4 转封装成功！生成标准 MP4 文件，大小: ${formatBytes(outputBlob.size)}`);
         } catch (transmuxErr) {
-          log(`⚠️ 合并提示: ${transmuxErr.message}`);
-          log(`💡 自动保存为单轨原生流 (.ts) 格式！`);
+          log(`⚠️ 转封装 MP4 提示: ${transmuxErr.message}`);
+          log(`💡 该流可能为 H.265 编码或特殊流，纯前端已自动安全降级保存为原生无损 (.ts) 格式，保证视频不丢帧！`);
           outputExt = "ts";
           outputBlob = new Blob(chunkBuffers, { type: "video/mp2t" });
         }
