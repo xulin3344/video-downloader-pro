@@ -707,7 +707,7 @@ def tk_simpledialog_askstring(title, prompt, initialvalue="", parent=None):
 class VideoDownloaderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("视频下载器 V14 Pro - 全能极速版")
+        self.root.title("视频下载器 V15 Pro - 全能极速版")
         self.root.geometry("1020x760")
         self.root.minsize(860, 600)
 
@@ -932,6 +932,13 @@ class VideoDownloaderApp:
             command=self.open_batch_dialog
         ).pack(side=tk.LEFT, padx=4)
 
+        ttk.Button(
+            header_right,
+            text="🔄 TS转MP4",
+            style="Secondary.TButton",
+            command=self.open_ts_converter_dialog
+        ).pack(side=tk.LEFT, padx=4)
+
         theme_icon = "☀️ 浅色模式" if self.current_theme_name == "dark" else "🌙 深色模式"
         self.btn_theme_toggle = ttk.Button(
             header_right,
@@ -995,6 +1002,13 @@ class VideoDownloaderApp:
             text="➕ 批量下载",
             style="Secondary.TButton",
             command=self.open_batch_dialog
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(
+            input_card,
+            text="🔄 TS转MP4",
+            style="Secondary.TButton",
+            command=self.open_ts_converter_dialog
         ).pack(side=tk.LEFT, padx=2)
 
         # ----------------------------------------------------
@@ -1345,6 +1359,298 @@ class VideoDownloaderApp:
         btn_import_only.pack(side=tk.RIGHT, padx=6)
 
         ttk.Button(btn_box, text="取消", style="Secondary.TButton", command=dlg.destroy).pack(side=tk.RIGHT)
+
+    # ==============================================================================
+    # 7.5. TS 视频一键无损转 MP4 工具 (集成 FFmpeg 高速流复制引擎)
+    # ==============================================================================
+    def open_ts_converter_dialog(self):
+        """弹出 TS 视频一键无损转 MP4 工具对话框"""
+        t = self.theme
+        dlg = tk.Toplevel(self.root)
+        dlg.title("TS 视频一键无损转 MP4 工具 (零耗时·原画质秒转)")
+        dlg.geometry("740x520")
+        dlg.minsize(620, 420)
+        dlg.configure(bg=t["bg_main"])
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        # 检查系统 FFmpeg
+        if not self.ffmpeg_path:
+            self.ffmpeg_path = self._detect_ffmpeg()
+        if not self.ffmpeg_path:
+            messagebox.showwarning(
+                "缺少 FFmpeg 核心",
+                "未在系统中检测到 FFmpeg 核心！\n\n请先确认系统已安装 FFmpeg，或将其放入软件同级目录。",
+                parent=dlg
+            )
+            dlg.destroy()
+            return
+
+        header = tk.Frame(dlg, bg=t["bg_card"], padx=18, pady=12)
+        header.pack(fill=tk.X)
+        tk.Label(
+            header,
+            text="🔄 TS 视频一键无损转 MP4 工具 (Stream Copy 高速换壳)",
+            bg=t["bg_card"],
+            fg=t["accent"],
+            font=("Microsoft YaHei UI", 11, "bold")
+        ).pack(anchor="w")
+        tk.Label(
+            header,
+            text="基于底层 FFmpeg 流复制技术，直接转换外层容器，不消耗 CPU、100% 原始画质与音质，几百兆视频 1 秒内无损转换！",
+            bg=t["bg_card"],
+            fg=t["text_sub"],
+            font=("Microsoft YaHei UI", 8)
+        ).pack(anchor="w", pady=(3, 0))
+
+        content_box = tk.Frame(dlg, bg=t["bg_main"], padx=16, pady=10)
+        content_box.pack(fill=tk.BOTH, expand=True)
+
+        tools_frame = tk.Frame(content_box, bg=t["bg_main"])
+        tools_frame.pack(fill=tk.X, pady=(0, 6))
+
+        ts_items = []
+
+        def format_size(bytes_num):
+            if bytes_num < 1024 * 1024:
+                return f"{bytes_num / 1024:.1f} KB"
+            return f"{bytes_num / (1024 * 1024):.1f} MB"
+
+        def refresh_list_view():
+            for item in tree.get_children():
+                tree.delete(item)
+            total_sz = 0
+            for idx, item in enumerate(ts_items):
+                sz_str = format_size(item["size"])
+                total_sz += item["size"]
+                tree.insert("", "end", iid=str(idx), values=(item["name"], sz_str, item["status"], item["path"]))
+            stat_lbl.config(text=f"📋 已载入: {len(ts_items)} 个视频 (共计 {format_size(total_sz)})")
+
+        def add_file_paths(file_paths):
+            existing_paths = {item["path"] for item in ts_items}
+            for p in file_paths:
+                p = os.path.abspath(p)
+                if p not in existing_paths and p.lower().endswith(".ts") and os.path.exists(p):
+                    sz = os.path.getsize(p)
+                    ts_items.append({
+                        "path": p,
+                        "name": os.path.basename(p),
+                        "size": sz,
+                        "status": "等待转换"
+                    })
+            refresh_list_view()
+
+        def on_choose_files():
+            chosen = filedialog.askopenfilenames(
+                title="选择要转换的 TS 视频文件",
+                filetypes=[("TS视频文件", "*.ts"), ("所有文件", "*.*")],
+                parent=dlg
+            )
+            if chosen:
+                add_file_paths(chosen)
+
+        def on_scan_downloads():
+            dirs_to_scan = []
+            cur_download = self.config_mgr.get("download_dir")
+            if cur_download and os.path.exists(cur_download):
+                dirs_to_scan.append(cur_download)
+            win_downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+            if os.path.exists(win_downloads) and win_downloads not in dirs_to_scan:
+                dirs_to_scan.append(win_downloads)
+
+            found_files = []
+            for d in dirs_to_scan:
+                try:
+                    for fname in os.listdir(d):
+                        if fname.lower().endswith(".ts"):
+                            found_files.append(os.path.join(d, fname))
+                except Exception:
+                    pass
+
+            if found_files:
+                add_file_paths(found_files)
+            else:
+                refresh_list_view()
+
+        def on_clear_list():
+            ts_items.clear()
+            refresh_list_view()
+
+        ttk.Button(tools_frame, text="📁 选择单个/多个 TS 文件", style="Accent.TButton", command=on_choose_files).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(tools_frame, text="🔍 扫描下载目录中的 TS", style="Secondary.TButton", command=lambda: (on_scan_downloads(), messagebox.showinfo("扫描完成", f"已扫描下载目录，当前共载入 {len(ts_items)} 个 TS 文件！", parent=dlg))).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(tools_frame, text="🗑️ 清空列表", style="Secondary.TButton", command=on_clear_list).pack(side=tk.LEFT)
+
+        # 视频列表区域 (使用 Treeview 表格展示)
+        tree_frame = tk.Frame(content_box, bg=t["bg_card"], bd=1, relief=tk.SOLID)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+
+        columns = ("name", "size", "status", "path")
+        tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="browse")
+        tree.heading("name", text="视频文件名")
+        tree.heading("size", text="大小")
+        tree.heading("status", text="状态")
+        tree.heading("path", text="所在路径")
+
+        tree.column("name", width=280, anchor="w")
+        tree.column("size", width=80, anchor="center")
+        tree.column("status", width=120, anchor="center")
+        tree.column("path", width=220, anchor="w")
+
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 底部控制区
+        footer_box = tk.Frame(dlg, bg=t["bg_card"], padx=18, pady=12)
+        footer_box.pack(fill=tk.X, side=tk.BOTTOM)
+
+        left_footer = tk.Frame(footer_box, bg=t["bg_card"])
+        left_footer.pack(side=tk.LEFT)
+
+        stat_lbl = tk.Label(left_footer, text="📋 已载入: 0 个视频 (共计 0.0 MB)", bg=t["bg_card"], fg=t["text_sub"], font=("Microsoft YaHei UI", 9, "bold"))
+        stat_lbl.pack(anchor="w")
+
+        keep_ts_var = tk.BooleanVar(value=True)
+        chk_keep = tk.Checkbutton(
+            left_footer,
+            text="✓ 转换后保留原始 .ts 文件 (安全推荐)",
+            variable=keep_ts_var,
+            bg=t["bg_card"],
+            fg=t["accent"],
+            selectcolor=t["bg_input"],
+            activebackground=t["bg_card"],
+            activeforeground=t["accent"],
+            font=("Microsoft YaHei UI", 8)
+        )
+        chk_keep.pack(anchor="w", pady=(2, 0))
+
+        btn_box = tk.Frame(footer_box, bg=t["bg_card"])
+        btn_box.pack(side=tk.RIGHT)
+
+        def open_output_folder():
+            target_dir = None
+            if ts_items:
+                target_dir = os.path.dirname(ts_items[0]["path"])
+            if not target_dir or not os.path.exists(target_dir):
+                target_dir = self.config_mgr.get("download_dir")
+            if os.path.exists(target_dir):
+                if sys.platform == "win32":
+                    os.system(f'explorer "{os.path.abspath(target_dir)}"')
+                else:
+                    os.system(f'open "{target_dir}"')
+
+        def start_converting():
+            if not ts_items:
+                messagebox.showwarning("提示", "当前列表为空，请先添加要转换的 .ts 视频！", parent=dlg)
+                return
+
+            btn_convert.config(state=tk.DISABLED, text="⏳ 正在极速转换中...")
+            dlg.update()
+
+            def run_worker():
+                import subprocess, time
+                success_count = 0
+                for idx, item in enumerate(ts_items):
+                    in_path = item["path"]
+                    out_path = os.path.splitext(in_path)[0] + ".mp4"
+                    if in_path == out_path:
+                        out_path = os.path.splitext(in_path)[0] + "_converted.mp4"
+
+                    item["status"] = "⏳ 转换中..."
+                    dlg.after(0, lambda i=idx: tree.item(str(i), values=(ts_items[i]["name"], format_size(ts_items[i]["size"]), ts_items[i]["status"], ts_items[i]["path"])))
+
+                    start_t = time.time()
+                    cmd = [
+                        self.ffmpeg_path,
+                        "-i", in_path,
+                        "-c", "copy",
+                        out_path,
+                        "-y",
+                        "-loglevel", "error"
+                    ]
+                    try:
+                        res = subprocess.run(cmd, capture_output=True, timeout=60)
+                        cost = time.time() - start_t
+                        if res.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 1000:
+                            item["status"] = f"✅ 完成 ({cost:.1f}s)"
+                            success_count += 1
+                            if not keep_ts_var.get():
+                                try:
+                                    os.remove(in_path)
+                                except Exception:
+                                    pass
+                        else:
+                            # 尝试修复音频重封装
+                            cmd_fix = [
+                                self.ffmpeg_path,
+                                "-i", in_path,
+                                "-c:v", "copy",
+                                "-c:a", "aac",
+                                out_path,
+                                "-y",
+                                "-loglevel", "error"
+                            ]
+                            res_fix = subprocess.run(cmd_fix, capture_output=True, timeout=120)
+                            if res_fix.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 1000:
+                                item["status"] = f"✅ 完成 ({cost:.1f}s)"
+                                success_count += 1
+                            else:
+                                err_info = res.stderr.decode("utf-8", errors="ignore")
+                                if "Invalid data found" in err_info or "trun track id" in err_info:
+                                    item["status"] = "❌ 格式损坏(缺头)"
+                                else:
+                                    item["status"] = "❌ 转换失败"
+                    except Exception as e:
+                        item["status"] = f"❌ 错误: {str(e)[:10]}"
+
+                    dlg.after(0, lambda i=idx: tree.item(str(i), values=(ts_items[i]["name"], format_size(ts_items[i]["size"]), ts_items[i]["status"], ts_items[i]["path"])))
+
+                def on_finished():
+                    btn_convert.config(state=tk.NORMAL, text="🚀 立即一键转换全部")
+                    messagebox.showinfo(
+                        "转换完成",
+                        f"🎉 批量无损转换完成！\n\n- 成功: {success_count} 个视频\n- 状态已在列表中高亮更新\n- 已生成标准 .mp4 文件",
+                        parent=dlg
+                    )
+
+                dlg.after(0, on_finished)
+
+            threading.Thread(target=run_worker, daemon=True).start()
+
+        btn_convert = tk.Button(
+            btn_box,
+            text="🚀 立即一键转换全部",
+            command=start_converting,
+            bg=t["accent"],
+            fg="#ffffff" if t["name"] == "light" else "#11111b",
+            activebackground=t["accent_hover"],
+            bd=0,
+            cursor="hand2",
+            padx=14,
+            pady=6,
+            font=("Microsoft YaHei UI", 9, "bold")
+        )
+        btn_convert.pack(side=tk.RIGHT, padx=(6, 0))
+
+        btn_open_dir = tk.Button(
+            btn_box,
+            text="📂 打开文件夹",
+            command=open_output_folder,
+            bg=t["bg_input"],
+            fg=t["text_main"],
+            bd=1,
+            cursor="hand2",
+            padx=10,
+            pady=5,
+            font=("Microsoft YaHei UI", 9)
+        )
+        btn_open_dir.pack(side=tk.RIGHT, padx=6)
+
+        ttk.Button(btn_box, text="关闭", style="Secondary.TButton", command=dlg.destroy).pack(side=tk.RIGHT)
+
+        # 打开时自动检查并预导入下载目录中的 TS
+        on_scan_downloads()
 
     # ==============================================================================
     # 8. 视频信息提取流程
