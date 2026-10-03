@@ -282,6 +282,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
         mediaSequence = parseInt(line.split(":")[1].trim(), 10) || 0;
+      } else if (line.startsWith("#EXT-X-MAP:")) {
+        const attrStr = line.slice(11);
+        const attrs = parseKeyAttributes(attrStr);
+        if (attrs.URI) {
+          const initUrl = resolveUrl(url, attrs.URI);
+          log(`📦 检测到 fMP4 初始化头 (#EXT-X-MAP): ${initUrl}`);
+          segments.push({
+            url: initUrl,
+            index: segments.length,
+            keyInfo: null,
+            isInitSegment: true
+          });
+        }
       } else if (line.startsWith("#EXT-X-KEY:")) {
         const attrStr = line.slice(11);
         const attrs = parseKeyAttributes(attrStr);
@@ -478,7 +491,17 @@ document.addEventListener("DOMContentLoaded", () => {
       let outputBlob = null;
       let outputExt = format;
 
-      if (format === "mp4") {
+      // 检查切片是否包含 fMP4 (带 #EXT-X-MAP 初始化头或 .m4s 后缀)
+      const isFmp4 = segments.some(s => s.isInitSegment || (s.url && s.url.includes(".m4s")));
+
+      if (isFmp4) {
+        statusText.textContent = "检测为标准 fMP4 流，正在组装 MP4 容器...";
+        log("📦 检测到 fMP4 (ISO BMFF) 媒体流，已完整拼接初始化头与全部切片，输出为标准 .mp4 视频！");
+        outputExt = "mp4";
+        outputBlob = new Blob(chunkBuffers, { type: "video/mp4" });
+        percentText.textContent = "100%";
+        progressBarFill.style.width = "100%";
+      } else if (format === "mp4") {
         statusText.textContent = "正在合并原生 TS 数据流...";
         log("按照用户指示，跳过 mux.js 混流，直接合并 TS 切片，保证音视频完好无损。");
         try {

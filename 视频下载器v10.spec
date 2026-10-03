@@ -29,7 +29,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='视频下载器v12_Pro',
+    name='视频下载器v13_Pro',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -1327,7 +1327,7 @@ class VideoDownloaderApp:
                 "referer": primary_item.get("referer", canonical_url)
             }
             self.root.after(0, lambda: self.set_status(f"嗅探成功！已捕获视频流: {final_title}"))
-            self._create_and_add_task(sniff_info, stream_url, final_title, referer=primary_item.get("referer"))
+            self._create_and_add_task(sniff_info, stream_url, final_title, referer=primary_item.get("referer"), page_url=canonical_url)
             return
 
         # 4. 彻底未能解析到任何有效视频，分流精准提示
@@ -1347,7 +1347,7 @@ class VideoDownloaderApp:
             self.root.after(0, lambda: self.set_status(f"未能从该页面中嗅探到可下载的视频: {raw_url}"))
             self.root.after(0, lambda: messagebox.showwarning("解析提示", f"未能从该页面中解析或嗅探到可播放的视频流:\n{raw_url}"))
 
-    def _create_and_add_task(self, info, url, title, referer=None):
+    def _create_and_add_task(self, info, url, title, referer=None, page_url=None):
         """向任务列表添加卡片"""
         task_id = str(uuid.uuid4())
         task_data = {
@@ -1359,6 +1359,7 @@ class VideoDownloaderApp:
             "thumbnail": info.get("thumbnail"),
             "extractor": info.get("extractor", "Video"),
             "referer": referer or info.get("referer"),
+            "page_url": page_url or referer,
             "status": "pending",
             "progress": 0.0,
             "filepath": None
@@ -1533,6 +1534,21 @@ class VideoDownloaderApp:
             self.root.after(0, lambda: self._on_task_finished(task_id, downloaded_file))
         except Exception as e:
             err_str = str(e)
+            # 针对 M3U8 流媒体 auth_key 临时过期的智能重嗅探重试机制
+            page_url = task.get("page_url") or task.get("referer")
+            if ("403" in err_str or "Forbidden" in err_str) and page_url and not task.get("_retried_sniff"):
+                task["_retried_sniff"] = True
+                if card:
+                    self.root.after(0, lambda: card.status_var.set("密钥过期，正在刷新链接重试..."))
+                try:
+                    _, refreshed_items = MediaSniffer.sniff(page_url)
+                    if refreshed_items:
+                        matched = next((it for it in refreshed_items if it.get("type") == task.get("extractor")), refreshed_items[0])
+                        task["url"] = matched["url"]
+                        self.executor.submit(self._download_worker, task_id)
+                        return
+                except Exception:
+                    pass
             self.root.after(0, lambda: self._on_task_failed(task_id, err_str))
 
     def _progress_hook(self, d, task_id):
