@@ -62,6 +62,11 @@
 * **多级兜底策略**：短链还原 (b23.tv, v.douyin.com) $\rightarrow$ 原生元数据提取 $\rightarrow$ 网页 HTML OpenGraph Meta 标签清洗 $\rightarrow$ 文件名即时重命名。
 * 彻底清除 `_bilibili`、`- 抖音`、`- 优酷` 等垃圾营销后缀与 Windows 非法字符，杜绝无意义哈希乱码。
 
+### 📥 7. 强大智能的批量多链接下载中心
+* **多链接智能感知**：在主界面输入框粘贴整篇文本或多个网址时，系统自动识别并引导进入批量中心。
+* **一键全部下载流水线**：提供显眼的「🚀 确认并一键全部下载」按钮，导入后自动并发解析、解析完毕立即自动开始下载，全流程无需人工干预！
+* **便捷交互支持**：支持右键菜单、一键从剪贴板读取、实时高亮统计有效链接数量与自动去重过滤。
+
 ---
 
 ## 🏗️ 双轨架构设计
@@ -95,7 +100,7 @@ flowchart TD
 
 ### 选项 1：直接运行已编译的 Windows 版（免配置）
 
-1. 进入 [Releases 页面](https://github.com/xulin3344/video-downloader-pro/releases) 下载最新版的 `视频下载器v12_Pro.exe`。
+1. 进入 [Releases 页面](https://github.com/xulin3344/video-downloader-pro/releases) 下载最新版的 `视频下载器v14_Pro.exe`。
 2. 双击即可直接运行，无需安装 Python 环境。
 3. （可选）将 `ffmpeg.exe` 放置在与程序同级目录下，或确保系统环境变量中有 FFmpeg，即可自动解锁 1080P/4K 超高清音视频流合并。
 

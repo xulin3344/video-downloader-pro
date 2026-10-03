@@ -707,7 +707,7 @@ def tk_simpledialog_askstring(title, prompt, initialvalue="", parent=None):
 class VideoDownloaderApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("视频下载器 V11 Pro - 全能极速版")
+        self.root.title("视频下载器 V14 Pro - 全能极速版")
         self.root.geometry("1020x760")
         self.root.minsize(860, 600)
 
@@ -788,14 +788,15 @@ class VideoDownloaderApp:
 
     def _handle_bridge_incoming_url(self, url):
         """响应浏览器扩展直接投送任务"""
-        self.url_var.set(url)
         self.set_status(f"收到浏览器插件投送链接，正在解析: {url}")
         try:
             self.root.deiconify()
             self.root.lift()
         except Exception:
             pass
-        self.extract_and_add()
+        self.url_entry.delete(0, tk.END)
+        self.url_entry.insert(0, url)
+        self.extract_info_async(url, auto_start=True)
 
     def _detect_ffmpeg(self):
         """检测系统是否存在 ffmpeg 可执行文件"""
@@ -966,21 +967,35 @@ class VideoDownloaderApp:
             relief=tk.FLAT
         )
         self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8, ipady=4)
-        self.url_entry.bind("<Return>", lambda e: self.extract_single_url())
+        self.url_entry.bind("<Return>", lambda e: self.extract_single_url(auto_download=True))
 
         ttk.Button(
             input_card,
-            text="智能提取",
+            text="⚡ 提取并下载",
             style="Accent.TButton",
-            command=self.extract_single_url
+            command=lambda: self.extract_single_url(auto_download=True)
         ).pack(side=tk.LEFT, padx=3)
 
         ttk.Button(
             input_card,
-            text="粘贴并提取",
+            text="仅提取",
             style="Secondary.TButton",
-            command=self.paste_and_extract
-        ).pack(side=tk.LEFT, padx=3)
+            command=lambda: self.extract_single_url(auto_download=False)
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(
+            input_card,
+            text="📋 粘贴并下载",
+            style="Secondary.TButton",
+            command=lambda: self.paste_and_extract(auto_download=True)
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(
+            input_card,
+            text="➕ 批量下载",
+            style="Secondary.TButton",
+            command=self.open_batch_dialog
+        ).pack(side=tk.LEFT, padx=2)
 
         # ----------------------------------------------------
         # 下载配置工具栏 (Settings & Global Actions Toolbar)
@@ -1030,7 +1045,7 @@ class VideoDownloaderApp:
         self.quality_combo.bind("<<ComboboxSelected>>", self.on_quality_changed)
 
         # 右侧全局操作 (全部开始、全选、反选、清空已完成)
-        ttk.Button(toolbar, text="▶ 开始全部", style="Accent.TButton", command=self.start_all_downloads).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(toolbar, text="▶ 开始全部下载", style="Accent.TButton", command=self.start_all_downloads).pack(side=tk.RIGHT, padx=4)
         ttk.Button(toolbar, text="清空已完成", style="Secondary.TButton", command=self.clear_completed_tasks).pack(side=tk.RIGHT, padx=4)
         ttk.Button(toolbar, text="反选", style="Secondary.TButton", command=self.invert_selection).pack(side=tk.RIGHT, padx=2)
         ttk.Button(toolbar, text="全选", style="Secondary.TButton", command=self.select_all).pack(side=tk.RIGHT, padx=2)
@@ -1133,69 +1148,81 @@ class VideoDownloaderApp:
             content = self.root.clipboard_get()
             if content and content != self.last_clipboard:
                 self.last_clipboard = content
-                urls = re.findall(r"https?://[^\s<>\"'()]+", content)
-                if urls:
+                urls = list(dict.fromkeys(re.findall(r"https?://[^\s<>\"'()]+", content)))
+                if len(urls) >= 2:
+                    self.set_status(f"📋 监听到剪贴板包含 {len(urls)} 个批量链接")
+                    self.open_batch_dialog(initial_text=content, auto_download=True)
+                elif len(urls) == 1:
                     url = urls[0]
                     # 避免对已经在列表中的 URL 重复提取
                     existing_urls = [task["url"] for task in self.tasks.values()]
                     if url not in existing_urls:
                         self.set_status(f"📋 监听到剪贴板新链接: {url}")
-                        # 自动入队解析
                         self.url_entry.delete(0, tk.END)
                         self.url_entry.insert(0, url)
-                        self.extract_info_async(url)
+                        self.extract_info_async(url, auto_start=False)
         except Exception:
             pass
 
         # 每 1.2 秒检测一次
         self.root.after(1200, self._schedule_clipboard_check)
 
-    def paste_and_extract(self):
-        """一键从剪贴板粘贴并提取"""
+    def paste_and_extract(self, auto_download=True):
+        """一键从剪贴板粘贴并提取（智能识别单链接或多链接）"""
         try:
             content = self.root.clipboard_get()
-            urls = re.findall(r"https?://[^\s<>\"'()]+", content)
-            if urls:
+            urls = list(dict.fromkeys(re.findall(r"https?://[^\s<>\"'()]+", content)))
+            if not urls:
+                messagebox.showinfo("提示", "剪贴板中未包含有效网址 (需包含 http:// 或 https://)")
+                return
+            if len(urls) >= 2:
+                # 剪贴板包含多个链接，直接拉起批量下载对话框并展示
+                self.open_batch_dialog(initial_text=content, auto_download=auto_download)
+            else:
                 self.url_entry.delete(0, tk.END)
                 self.url_entry.insert(0, urls[0])
-                self.extract_single_url()
-            else:
-                messagebox.showinfo("提示", "剪贴板中未包含有效网址 (http/https)")
+                self.extract_single_url(auto_download=auto_download)
         except Exception as e:
             messagebox.showwarning("提示", f"读取剪贴板失败: {e}")
 
     # ==============================================================================
-    # 7. 批量添加多链接对话框
+    # 7. 批量添加多链接对话框 (全面升级：多格式识别、一键全部下载、右键快捷支持)
     # ==============================================================================
-    def open_batch_dialog(self):
+    def open_batch_dialog(self, initial_text="", auto_download=True):
         """弹出批量添加对话框"""
         t = self.theme
         dlg = tk.Toplevel(self.root)
-        dlg.title("批量导入视频网址")
-        dlg.geometry("620x460")
+        dlg.title("批量导入与多链接下载")
+        dlg.geometry("680x520")
+        dlg.minsize(580, 420)
         dlg.configure(bg=t["bg_main"])
         dlg.transient(self.root)
         dlg.grab_set()
 
-        header = tk.Frame(dlg, bg=t["bg_card"], padx=16, pady=10)
+        # 头部标题与提示
+        header = tk.Frame(dlg, bg=t["bg_card"], padx=18, pady=12)
         header.pack(fill=tk.X)
         tk.Label(
             header,
-            text="批量添加多链接 (自动去重过滤)",
+            text="📥 批量多链接下载中心 (智能识别 & 自动去重)",
             bg=t["bg_card"],
             fg=t["accent"],
-            font=("Microsoft YaHei UI", 10, "bold")
+            font=("Microsoft YaHei UI", 11, "bold")
         ).pack(anchor="w")
         tk.Label(
             header,
-            text="可在下方直接粘贴整段文字，系统将自动识别并抽取所有以 http/https 开头的视频链接",
+            text="支持粘贴任意文本、网页源码或多行网址，系统会自动过滤出所有 http/https 视频地址",
             bg=t["bg_card"],
             fg=t["text_sub"],
             font=("Microsoft YaHei UI", 8)
-        ).pack(anchor="w", pady=(2, 0))
+        ).pack(anchor="w", pady=(3, 0))
 
         content_box = tk.Frame(dlg, bg=t["bg_main"], padx=16, pady=10)
         content_box.pack(fill=tk.BOTH, expand=True)
+
+        # 快捷工具栏（从剪贴板粘贴、清空输入）
+        tools_frame = tk.Frame(content_box, bg=t["bg_main"])
+        tools_frame.pack(fill=tk.X, pady=(0, 6))
 
         txt_input = tk.Text(
             content_box,
@@ -1210,55 +1237,148 @@ class VideoDownloaderApp:
         )
         txt_input.pack(fill=tk.BOTH, expand=True)
 
-        footer_box = tk.Frame(dlg, bg=t["bg_main"], padx=16, pady=10)
-        footer_box.pack(fill=tk.X)
+        # 右键快捷菜单支持
+        ctx_menu = tk.Menu(txt_input, tearoff=0)
+        ctx_menu.add_command(label="剪切 (Cut)", command=lambda: txt_input.event_generate("<<Cut>>"))
+        ctx_menu.add_command(label="复制 (Copy)", command=lambda: txt_input.event_generate("<<Copy>>"))
+        ctx_menu.add_command(label="粘贴 (Paste)", command=lambda: (txt_input.event_generate("<<Paste>>"), dlg.after(50, update_count)))
+        ctx_menu.add_separator()
+        ctx_menu.add_command(label="全选 (Select All)", command=lambda: txt_input.tag_add("sel", "1.0", "end"))
+        ctx_menu.add_command(label="清空 (Clear)", command=lambda: (txt_input.delete("1.0", tk.END), update_count()))
+        txt_input.bind("<Button-3>", lambda e: ctx_menu.tk_popup(e.x_root, e.y_root))
 
-        count_lbl = tk.Label(footer_box, text="已识别: 0 个有效链接", bg=t["bg_main"], fg=t["text_sub"])
-        count_lbl.pack(side=tk.LEFT)
+        # 底部控制栏
+        footer_box = tk.Frame(dlg, bg=t["bg_card"], padx=18, pady=12)
+        footer_box.pack(fill=tk.X, side=tk.BOTTOM)
+
+        left_ctrl = tk.Frame(footer_box, bg=t["bg_card"])
+        left_ctrl.pack(side=tk.LEFT, fill=tk.Y)
+
+        count_lbl = tk.Label(left_ctrl, text="🔍 已识别到: 0 个有效视频链接", bg=t["bg_card"], fg=t["text_sub"], font=("Microsoft YaHei UI", 9, "bold"))
+        count_lbl.pack(anchor="w")
+
+        auto_download_var = tk.BooleanVar(value=auto_download)
+        chk_auto = tk.Checkbutton(
+            left_ctrl,
+            text="✓ 导入解析后自动立即开始下载 (推荐)",
+            variable=auto_download_var,
+            bg=t["bg_card"],
+            fg=t["accent"],
+            selectcolor=t["bg_input"],
+            activebackground=t["bg_card"],
+            activeforeground=t["accent"],
+            font=("Microsoft YaHei UI", 9)
+        )
+        chk_auto.pack(anchor="w", pady=(4, 0))
 
         def update_count(*args):
             text = txt_input.get("1.0", tk.END)
-            found = set(re.findall(r"https?://[^\s<>\"'()]+", text))
-            count_lbl.config(text=f"已识别: {len(found)} 个有效链接", fg=t["accent"] if found else t["text_sub"])
+            found = list(dict.fromkeys(re.findall(r"https?://[^\s<>\"'()]+", text)))
+            if found:
+                count_lbl.config(text=f"✨ 已识别到: {len(found)} 个有效视频链接", fg=t["accent"])
+            else:
+                count_lbl.config(text="🔍 已识别到: 0 个有效视频链接", fg=t["text_sub"])
+
+        def paste_from_clipboard():
+            try:
+                clip_text = self.root.clipboard_get()
+                if clip_text:
+                    txt_input.insert(tk.INSERT, clip_text)
+                    update_count()
+            except Exception:
+                pass
+
+        ttk.Button(tools_frame, text="📋 从剪贴板粘贴", style="Secondary.TButton", command=paste_from_clipboard).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(tools_frame, text="🗑️ 清空内容", style="Secondary.TButton", command=lambda: (txt_input.delete("1.0", tk.END), update_count())).pack(side=tk.LEFT)
 
         txt_input.bind("<KeyRelease>", update_count)
+        txt_input.bind("<ButtonRelease>", update_count)
+        txt_input.bind("<<Paste>>", lambda e: dlg.after(50, update_count))
 
-        def do_import():
+        if initial_text:
+            txt_input.insert("1.0", initial_text)
+            update_count()
+
+        def do_execute(start_download_now):
             text = txt_input.get("1.0", tk.END)
             urls = list(dict.fromkeys(re.findall(r"https?://[^\s<>\"'()]+", text)))
             if not urls:
-                messagebox.showwarning("警告", "未识别到任何有效链接，请检查输入内容", parent=dlg)
+                messagebox.showwarning("提示", "未在输入框中识别到任何有效的 http/https 链接！", parent=dlg)
                 return
             dlg.destroy()
-            self.set_status(f"正在批量解析 {len(urls)} 个链接...")
+            action_desc = "并自动开始下载" if start_download_now else "待手动确认下载"
+            self.set_status(f"🚀 已接收 {len(urls)} 个批量链接，正在并发解析{action_desc}...")
             for u in urls:
-                self.extract_info_async(u)
+                self.extract_info_async(u, auto_start=start_download_now)
 
-        ttk.Button(footer_box, text="立即导入并解析", style="Accent.TButton", command=do_import).pack(side=tk.RIGHT, padx=4)
-        ttk.Button(footer_box, text="取消", style="Secondary.TButton", command=dlg.destroy).pack(side=tk.RIGHT)
+        # 右侧操作按钮组
+        btn_box = tk.Frame(footer_box, bg=t["bg_card"])
+        btn_box.pack(side=tk.RIGHT)
+
+        btn_download = tk.Button(
+            btn_box,
+            text="🚀 确认并一键全部下载",
+            command=lambda: do_execute(start_download_now=True),
+            bg=t["accent"],
+            fg="#ffffff" if t["name"] == "light" else "#11111b",
+            activebackground=t["accent_hover"],
+            bd=0,
+            cursor="hand2",
+            padx=12,
+            pady=6,
+            font=("Microsoft YaHei UI", 9, "bold")
+        )
+        btn_download.pack(side=tk.RIGHT, padx=(6, 0))
+
+        btn_import_only = tk.Button(
+            btn_box,
+            text="📋 仅导入待下载列表",
+            command=lambda: do_execute(start_download_now=False),
+            bg=t["bg_input"],
+            fg=t["text_main"],
+            bd=1,
+            cursor="hand2",
+            padx=10,
+            pady=5,
+            font=("Microsoft YaHei UI", 9)
+        )
+        btn_import_only.pack(side=tk.RIGHT, padx=6)
+
+        ttk.Button(btn_box, text="取消", style="Secondary.TButton", command=dlg.destroy).pack(side=tk.RIGHT)
 
     # ==============================================================================
     # 8. 视频信息提取流程
     # ==============================================================================
-    def extract_single_url(self):
-        """从输入框提取单个 URL"""
-        raw_url = self.url_entry.get().strip()
-        if not raw_url:
-            messagebox.showwarning("提示", "请输入视频网址")
+    def extract_single_url(self, auto_download=False):
+        """从输入框提取单个或批量 URL"""
+        raw_text = self.url_entry.get().strip()
+        if not raw_text:
+            messagebox.showwarning("提示", "请输入或粘贴视频网址")
             return
-        if not raw_url.startswith(("http://", "https://")):
-            raw_url = "https://" + raw_url
-            self.url_entry.delete(0, tk.END)
-            self.url_entry.insert(0, raw_url)
 
-        self.extract_info_async(raw_url)
+        urls = list(dict.fromkeys(re.findall(r"https?://[^\s<>\"'()]+", raw_text)))
+        if len(urls) >= 2:
+            # 检测到多条链接，直接打开批量下载器，并带入所有链接
+            self.open_batch_dialog(initial_text=raw_text, auto_download=auto_download)
+            return
+        elif len(urls) == 1:
+            raw_url = urls[0]
+        else:
+            if not raw_text.startswith(("http://", "https://")):
+                raw_url = "https://" + raw_text
+            else:
+                raw_url = raw_text
 
-    def extract_info_async(self, url):
+        self.url_entry.delete(0, tk.END)
+        self.url_entry.insert(0, raw_url)
+        self.extract_info_async(raw_url, auto_start=auto_download)
+
+    def extract_info_async(self, url, auto_start=False):
         """异步拉取视频/播放列表信息"""
         self.set_status(f"正在深度解析: {url}...")
-        threading.Thread(target=self._extract_worker, args=(url,), daemon=True).start()
+        threading.Thread(target=self._extract_worker, args=(url, auto_start), daemon=True).start()
 
-    def _extract_worker(self, raw_url):
+    def _extract_worker(self, raw_url, auto_start=False):
         """后台提取元数据工作线程（双引擎：yt-dlp 原生解析 + 通用网页内嵌播放器嗅探）"""
         # 1. 短链还原
         canonical_url = TitleResolver.resolve_redirect(raw_url)
@@ -1289,7 +1409,7 @@ class VideoDownloaderApp:
                 for entry in entries:
                     video_url = entry.get("url") or canonical_url
                     title = entry.get("title") or "未命名视频"
-                    self._create_and_add_task(entry, video_url, title)
+                    self._create_and_add_task(entry, video_url, title, auto_start=auto_start)
                 return
             else:
                 # 单个视频
@@ -1304,7 +1424,7 @@ class VideoDownloaderApp:
 
                 final_title = TitleResolver.clean_title(extracted_title, info.get("id") or "未命名视频")
                 self.root.after(0, lambda: self.set_status(f"解析成功: {final_title}"))
-                self._create_and_add_task(info, canonical_url, final_title)
+                self._create_and_add_task(info, canonical_url, final_title, auto_start=auto_start)
                 return
 
         # 3. 如果 yt-dlp 失败（如独立博客、CMS站、DPlayer 等内嵌播放器网页），启动通用网页嗅探器！
@@ -1327,7 +1447,7 @@ class VideoDownloaderApp:
                 "referer": primary_item.get("referer", canonical_url)
             }
             self.root.after(0, lambda: self.set_status(f"嗅探成功！已捕获视频流: {final_title}"))
-            self._create_and_add_task(sniff_info, stream_url, final_title, referer=primary_item.get("referer"), page_url=canonical_url)
+            self._create_and_add_task(sniff_info, stream_url, final_title, referer=primary_item.get("referer"), page_url=canonical_url, auto_start=auto_start)
             return
 
         # 4. 彻底未能解析到任何有效视频，分流精准提示
@@ -1347,7 +1467,7 @@ class VideoDownloaderApp:
             self.root.after(0, lambda: self.set_status(f"未能从该页面中嗅探到可下载的视频: {raw_url}"))
             self.root.after(0, lambda: messagebox.showwarning("解析提示", f"未能从该页面中解析或嗅探到可播放的视频流:\n{raw_url}"))
 
-    def _create_and_add_task(self, info, url, title, referer=None, page_url=None):
+    def _create_and_add_task(self, info, url, title, referer=None, page_url=None, auto_start=False):
         """向任务列表添加卡片"""
         task_id = str(uuid.uuid4())
         task_data = {
@@ -1365,9 +1485,9 @@ class VideoDownloaderApp:
             "filepath": None
         }
 
-        self.root.after(0, lambda: self._render_task_card(task_data))
+        self.root.after(0, lambda: self._render_task_card(task_data, auto_start=auto_start))
 
-    def _render_task_card(self, task_data):
+    def _render_task_card(self, task_data, auto_start=False):
         """在主线程中渲染卡片"""
         # 隐藏空列表提示
         if self.empty_label.winfo_viewable():
@@ -1390,6 +1510,10 @@ class VideoDownloaderApp:
         )
 
         self._update_task_counters()
+
+        # 关键优化：如果开启了自动开始下载，卡片生成完毕后直接开启下载！
+        if auto_start:
+            self.start_single_download(task_id)
 
     def _load_thumbnail_async(self, task_id, thumb_url, video_url=None, referer=None):
         """后台拉取封面或截取视频真实画面，避免阻塞主界面"""
